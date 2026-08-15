@@ -29,7 +29,7 @@ class SceneItem:
     id: int = field(default=0,metadata={"input": False, "view": False})
     name: str = field(default="",metadata={"input": True, "view": True})
     robot_model: str = field(default="",metadata={"input": True, "view": True})
-    hand_model: str = field(default="",metadata={"input": True, "view": True})
+    hand_model: int = field(default=0,metadata={"input": True, "view": True, "ref_table": "hand_models"})
     surrounding_model: str = field(default="",metadata={"input": True, "view": True})
     created_at: str = field(default="",metadata={"input": False, "view": True})
 
@@ -39,14 +39,28 @@ def get_input_fields(cls):
 def get_view_fields(cls):
     return [f for f in fields(cls) if f.metadata.get("view", False)]
 
+def get_ref_options(cls) -> dict[str, dict[int, str]]:
+    """metadataでref_tableが指定されたフィールド用に、参照先テーブルの{id: name}を集める。"""
+    ref_tables = {f.metadata["ref_table"] for f in fields(cls) if f.metadata.get("ref_table")}
+    return {table: {row["id"]: row["name"] for row in fetch_all(table)} for table in ref_tables}
+
 init_db()
 
 # --- 新規登録ダイアログ  ----------------------------------------
 
 @st.dialog("New Scene Item")
 def show_create_dialog() -> None:
+    ref_options = get_ref_options(SceneItem)
+
     for field in get_input_fields(SceneItem):
-        if field.type == "str":
+        ref_table = field.metadata.get("ref_table")
+        if ref_table:
+            options = ref_options[ref_table]
+            if options:
+                st.selectbox(field.name, options=list(options.keys()), format_func=lambda i, o=options: o[i], key=f"create_{field.name}")
+            else:
+                st.warning(f"{field.name}が登録されていません。")
+        elif field.type == "str":
             st.text_input(field.name, key=f"create_{field.name}")
         else:
             st.number_input(field.name, key=f"create_{field.name}", step=1.0 if field.type == "int" else 0.1)
@@ -63,7 +77,7 @@ def show_create_dialog() -> None:
                     for f in get_input_fields(SceneItem)
                 }
                 values["created_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                new_id = insert(**values)
+                new_id = insert("scene_items", **values)
             except Exception as e:
                 st.error(str(e))
             else:
@@ -73,7 +87,8 @@ def show_create_dialog() -> None:
 
 # --- メイン画面 -------------------------------------------------
 
-scene_items = [SceneItem(**row) for row in fetch_all()]
+scene_items = [SceneItem(**row) for row in fetch_all("scene_items")]
+ref_options = get_ref_options(SceneItem)
 
 # シーンアイテム選択コンボボックスと新規追加ボタンを横並びで表示
 st.markdown("#### Scene Item")
@@ -102,7 +117,12 @@ with st.container(border=True):
         if detail is None:
             st.error("詳細設定が見つかりませんでした。")
         else:
-            rows = [(field.name, f"{getattr(detail, field.name)}") for field in get_view_fields(SceneItem)]
+            rows = []
+            for vfield in get_view_fields(SceneItem):
+                raw = getattr(detail, vfield.name)
+                ref_table = vfield.metadata.get("ref_table")
+                value = ref_options[ref_table].get(raw, raw) if ref_table else raw
+                rows.append((vfield.name, f"{value}"))
             for label, value in rows:
                 c1, c2 = st.columns([1, 2])
                 c1.markdown(f"**{label}**")
@@ -113,7 +133,7 @@ with st.container(border=True):
 # 詳細設定領域の下に削除ボタンを表示。押下でリストから削除する。
 def delete_selected_item() -> None:
     # ウィジェット生成前のコールバック内でのみ scene_item_select を更新できる。
-    delete(selected_id)
+    delete("scene_items", selected_id)
     st.session_state["item_select"] = None
 
 st.button("削除", disabled=selected_id is None, on_click=delete_selected_item)

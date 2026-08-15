@@ -17,8 +17,11 @@ from __future__ import annotations
 import streamlit as st
 import time
 from dataclasses import dataclass, field, fields
+from pathlib import Path
 
 from db import init_db, fetch_all, insert, delete
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # タイトルとアイコンを設定
 st.set_page_config(page_title="Scene Manager", page_icon="🤖", layout="centered")
@@ -39,10 +42,14 @@ def get_input_fields(cls):
 def get_view_fields(cls):
     return [f for f in fields(cls) if f.metadata.get("view", False)]
 
-def get_ref_options(cls) -> dict[str, dict[int, str]]:
-    """metadataでref_tableが指定されたフィールド用に、参照先テーブルの{id: name}を集める。"""
+def get_ref_options(cls) -> dict[str, dict[int, dict]]:
+    """metadataでref_tableが指定されたフィールド用に、参照先テーブルの{id: 行dict}を集める。
+
+    行dict全体を持たせておくことで、name以外の属性（image_path等）も
+    列が増減した場合にコード変更無しで参照できる。
+    """
     ref_tables = {f.metadata["ref_table"] for f in fields(cls) if f.metadata.get("ref_table")}
-    return {table: {row["id"]: row["name"] for row in fetch_all(table)} for table in ref_tables}
+    return {table: {row["id"]: row for row in fetch_all(table)} for table in ref_tables}
 
 init_db()
 
@@ -57,7 +64,7 @@ def show_create_dialog() -> None:
         if ref_table:
             options = ref_options[ref_table]
             if options:
-                st.selectbox(field.name, options=list(options.keys()), format_func=lambda i, o=options: o[i], key=f"create_{field.name}")
+                st.selectbox(field.name, options=list(options.keys()), format_func=lambda i, o=options: o[i]["name"], key=f"create_{field.name}")
             else:
                 st.warning(f"{field.name}が登録されていません。")
         elif field.type == "str":
@@ -121,12 +128,25 @@ with st.container(border=True):
             for vfield in get_view_fields(SceneItem):
                 raw = getattr(detail, vfield.name)
                 ref_table = vfield.metadata.get("ref_table")
-                value = ref_options[ref_table].get(raw, raw) if ref_table else raw
-                rows.append((vfield.name, f"{value}"))
-            for label, value in rows:
+                image_path = None
+                if ref_table:
+                    ref_row = ref_options[ref_table].get(raw)
+                    value = ref_row["name"] if ref_row else raw
+                    if ref_row:
+                        image_path = ref_row.get("image_path") or None
+                else:
+                    value = raw
+                rows.append((vfield.name, f"{value}", image_path))
+            for label, value, image_path in rows:
                 c1, c2 = st.columns([1, 2])
                 c1.markdown(f"**{label}**")
                 c2.markdown(value)
+                if image_path:
+                    full_path = PROJECT_ROOT / image_path
+                    if full_path.exists():
+                        c2.image(str(full_path), width=150)
+                    else:
+                        c2.caption(f"画像が見つかりません: {image_path}")
     else:
         st.markdown("(項目を選択してください)")
 

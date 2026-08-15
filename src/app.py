@@ -98,7 +98,7 @@ scene_items = [SceneItem(**row) for row in fetch_all("scene_items")]
 ref_options = get_ref_options(SceneItem)
 
 # シーンアイテム選択コンボボックスと新規追加ボタンを横並びで表示
-st.markdown("#### Scene Item")
+st.markdown("#### Scene Setting")
 
 col_select, col_add = st.columns([5, 1])
 with col_select:
@@ -115,7 +115,7 @@ with col_add:
         show_create_dialog()
 
 # シーンアイテムの詳細設定を表示する領域
-st.markdown("###### 詳細設定")
+st.markdown("##### Details")
 
 with st.container(border=True):
     if selected_id is not None:

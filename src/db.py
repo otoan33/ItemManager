@@ -10,7 +10,7 @@ from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "db/scene_manager.db"
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
-HAND_MODELS_CSV_PATH = Path(__file__).resolve().parent / "hand_models.csv"
+HAND_MODELS_CSV_PATH = Path(__file__).resolve().parent.parent / "assets/hand_models.csv"
 
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)

@@ -13,8 +13,11 @@ import streamlit as st
 import time
 import json
 from dataclasses import dataclass, field, fields
+from pathlib import Path
 
 from db import fetch_all, fetch_run_tasks, fetch_scene_child, insert_scene_child, update_scene_child
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 TABLE = "review_results"
 ID_COLUMN = "result_id"
@@ -139,12 +142,24 @@ if review_results:
 
     event = st.dataframe(df_data, width='stretch', hide_index=True, on_select="rerun", selection_mode="single-row", key="review_result_table")
     selected_rows = event.selection.rows if event.selection else []
-    selected_result_id = review_results[selected_rows[0]]["result_id"] if selected_rows else None
+    selected_item = review_results[selected_rows[0]] if selected_rows else None
+    selected_result_id = selected_item["result_id"] if selected_item else None
+    selected_output_path = selected_item["output_result_path"] if selected_item else None
 elif confirmed_scene_id is not None:
     st.info("登録されているReviewResultがありません。「＋」から新規追加してください。")
     selected_result_id = None
+    selected_output_path = None
 else:
     selected_result_id = None
+    selected_output_path = None
+
+# 選択中のReviewResultのOutputResultPath（png）を表示する。
+if selected_output_path:
+    full_path = PROJECT_ROOT / selected_output_path
+    if full_path.exists():
+        st.image(str(full_path))
+    else:
+        st.caption(f"画像が見つかりません: {selected_output_path}")
 
 # 選択中のReviewResultを実行する。OutputResultPathはここで自動生成する（実行エンジン未実装のプレースホルダー）。
 def execute_selected_result() -> None:
@@ -152,7 +167,7 @@ def execute_selected_result() -> None:
         TABLE, ID_COLUMN, confirmed_scene_id, selected_result_id,
         status="Completed",
         created_at=time.strftime("%Y-%m-%d %H:%M:%S"),
-        output_result_path=f"output/review_results/scene{confirmed_scene_id}_result{selected_result_id}.json",
+        output_result_path=f"output/review_results/scene{confirmed_scene_id}_result{selected_result_id}.png",
     )
 
 st.button("実行", disabled=selected_result_id is None, on_click=execute_selected_result)

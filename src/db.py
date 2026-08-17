@@ -10,7 +10,14 @@ from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "db/scene_manager.db"
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
-HAND_MODELS_CSV_PATH = Path(__file__).resolve().parent.parent / "assets/hand_models.csv"
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+
+# CSVで初期投入するマスタテーブルとCSVファイルの対応。
+SEED_CSV_TABLES = {
+    "hand_models": ASSETS_DIR / "hand_models.csv",
+    "input_parameters": ASSETS_DIR / "input_parameters.csv",
+    "input_commands": ASSETS_DIR / "input_commands.csv",
+}
 
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -18,12 +25,12 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
-def _seed_hand_models() -> None:
-    """hand_models.csv の内容をhand_modelsテーブルに投入する（登録済みの名前はスキップ）。
+def _seed_from_csv(table: str, csv_path: Path) -> None:
+    """CSVの内容をtableに投入する（登録済みの名前はスキップ）。
 
-    CSVの列がそのままカラムになるため、image_path等の列を増減しても対応不要。
+    CSVの列がそのままカラムになるため、列が増減しても対応不要。
     """
-    with HAND_MODELS_CSV_PATH.open(encoding="utf-8", newline="") as f:
+    with csv_path.open(encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         columns = reader.fieldnames
         rows = [tuple(row[c] for c in columns) for row in reader]
@@ -32,18 +39,19 @@ def _seed_hand_models() -> None:
     placeholders = ", ".join("?" for _ in columns)
     with sqlite3.connect(DB_PATH) as conn:
         conn.executemany(
-            f"INSERT OR IGNORE INTO hand_models ({', '.join(columns)}) VALUES ({placeholders})",
+            f"INSERT OR IGNORE INTO {table} ({', '.join(columns)}) VALUES ({placeholders})",
             rows,
         )
         conn.commit()
 
 
 def init_db() -> None:
-    """schema.sql でテーブルを作成し、hand_models.csv で初期データを投入する。"""
+    """schema.sql でテーブルを作成し、CSVで初期データを投入する。"""
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
     with sqlite3.connect(DB_PATH) as conn:
         conn.executescript(schema)
-    _seed_hand_models()
+    for table, csv_path in SEED_CSV_TABLES.items():
+        _seed_from_csv(table, csv_path)
 
 
 def fetch_all(table: str) -> list[dict]:
@@ -70,8 +78,67 @@ def insert(table: str, **fields) -> int:
         return cur.lastrowid
 
 
+def update(table: str, item_id: int, **fields) -> None:
+    """指定テーブルのidの行を更新する。
+
+    キーワード引数のキーがそのままカラム名になるため、
+    テーブルのカラム構成が変わっても呼び出し側との対応を保ったまま使える。
+    """
+    set_clause = ", ".join(f"{k} = ?" for k in fields.keys())
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            f"UPDATE {table} SET {set_clause} WHERE id = ?",
+            (*fields.values(), item_id),
+        )
+        conn.commit()
+
+
 def delete(table: str, item_id: int) -> None:
     """指定テーブルからidで1件削除する。"""
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(f"DELETE FROM {table} WHERE id = ?", (item_id,))
+        conn.commit()
+
+
+# --- run_tasks専用 -------------------------------------------------
+# run_tasksは (scene_id, run_id) の組み合わせが主キーのため、
+# id単一カラムを前提とする上記の汎用関数は使えない。
+
+
+def fetch_run_tasks(scene_id: int) -> list[dict]:
+    """指定シーンのRunTaskを全件取得する（run_id昇順）。"""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM run_tasks WHERE scene_id = ? ORDER BY run_id", (scene_id,)
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def insert_run_task(scene_id: int, **fields) -> int:
+    """指定シーンにRunTaskを1件追加し、採番されたrun_idを返す。
+
+    run_idはシーンごとに1から始まる連番として、既存の最大値+1を採番する。
+    """
+    columns = ", ".join(["scene_id", "run_id", *fields.keys()])
+    placeholders = ", ".join("?" for _ in range(len(fields) + 2))
+    with sqlite3.connect(DB_PATH) as conn:
+        run_id = conn.execute(
+            "SELECT COALESCE(MAX(run_id), 0) + 1 FROM run_tasks WHERE scene_id = ?", (scene_id,)
+        ).fetchone()[0]
+        conn.execute(
+            f"INSERT INTO run_tasks ({columns}) VALUES ({placeholders})",
+            (scene_id, run_id, *fields.values()),
+        )
+        conn.commit()
+        return run_id
+
+
+def update_run_task(scene_id: int, run_id: int, **fields) -> None:
+    """指定シーン・run_idのRunTaskを更新する。"""
+    set_clause = ", ".join(f"{k} = ?" for k in fields.keys())
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            f"UPDATE run_tasks SET {set_clause} WHERE scene_id = ? AND run_id = ?",
+            (*fields.values(), scene_id, run_id),
+        )
         conn.commit()

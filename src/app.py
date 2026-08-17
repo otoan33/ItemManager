@@ -17,7 +17,20 @@ import streamlit as st
 from db import init_db
 
 # タイトルとアイコンを設定
-st.set_page_config(page_title="Scene Manager", page_icon="🤖", layout="centered")
+st.set_page_config(page_title="Scene Manager", page_icon="🤖", layout="wide")
+
+# layout="wide"だと画面幅いっぱいに広がりすぎるため、左右の余白を
+# centeredより少し狭い程度に収まるようCSSで最大幅を制限する。
+st.markdown(
+    """
+    <style>
+    .block-container {
+        max-width: 1200px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 init_db()
 

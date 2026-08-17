@@ -1,0 +1,4 @@
+name,path
+Sample Command A,scripts/sample_a.sh
+Sample Command B,scripts/sample_b.sh
+Sample Command C,scripts/sample_c.sh

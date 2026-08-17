@@ -1,0 +1,4 @@
+name,path
+Sample Parameter A,assets/params/sample_a.yaml
+Sample Parameter B,assets/params/sample_b.yaml
+Sample Parameter C,assets/params/sample_c.yaml

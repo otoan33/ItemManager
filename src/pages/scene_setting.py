@@ -111,6 +111,7 @@ with col_add:
 # 確定ボタン。押下で選択中のシーンをRun Taskページに渡して遷移する。
 if st.button("確定", disabled=selected_id is None, use_container_width=True):
     selected_name = next(m.name for m in scene_items if m.id == selected_id)
+    st.session_state["confirmed_scene_id"] = selected_id
     st.session_state["confirmed_scene_name"] = selected_name
     st.switch_page("pages/run_task.py")
 

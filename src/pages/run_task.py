@@ -23,7 +23,7 @@ class RunTask:
     name: str = field(default="", metadata={"input": True, "label": "Name"})
     input_parameter_path: int = field(default=0, metadata={"input": True, "label": "InputParameterPath", "ref_table": "input_parameters"})
     input_command_path: int = field(default=0, metadata={"input": True, "label": "InputCommandPath", "ref_table": "input_commands"})
-    output_data_path: str = field(default="", metadata={"input": True, "label": "OutputDataPath"})
+    output_data_path: str = field(default="", metadata={"input": False, "label": "OutputDataPath"})
     status: str = field(default="", metadata={"input": False, "label": "Status"})
     created_at: str = field(default="", metadata={"input": False, "label": "CreatedAt"})
 
@@ -122,13 +122,14 @@ elif confirmed_scene_id is not None:
 else:
     selected_run_id = None
 
-# 選択中のRunTaskを実行する（現時点ではStatus/Timestampの更新のみ）。
+# 選択中のRunTaskを実行する。OutputDataPathはここで自動生成する（実行エンジン未実装のプレースホルダー）。
 def execute_selected_task() -> None:
     update_run_task(
         confirmed_scene_id,
         selected_run_id,
         status="Completed",
         created_at=time.strftime("%Y-%m-%d %H:%M:%S"),
+        output_data_path=f"output/run_tasks/scene{confirmed_scene_id}_run{selected_run_id}.dat",
     )
 
 st.button("実行", disabled=selected_run_id is None, on_click=execute_selected_task)

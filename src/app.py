@@ -39,6 +39,8 @@ init_db()
 pages = [
     st.Page("pages/scene_setting.py", title="Scene Setting", icon="🗂️"),
     st.Page("pages/run_task.py", title="Run Task", icon="▶️"),
+    st.Page("pages/fit_model.py", title="Fit Model", icon="🧩"),
+    st.Page("pages/review_result.py", title="Review Result", icon="📊"),
 ]
 
 pg = st.navigation(pages)

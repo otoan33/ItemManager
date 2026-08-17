@@ -17,6 +17,9 @@ SEED_CSV_TABLES = {
     "hand_models": ASSETS_DIR / "hand_models.csv",
     "input_parameters": ASSETS_DIR / "input_parameters.csv",
     "input_commands": ASSETS_DIR / "input_commands.csv",
+    "fit_modes": ASSETS_DIR / "fit_modes.csv",
+    "model_versions": ASSETS_DIR / "model_versions.csv",
+    "analyze_modes": ASSETS_DIR / "analyze_modes.csv",
 }
 
 def _connect() -> sqlite3.Connection:
@@ -100,45 +103,60 @@ def delete(table: str, item_id: int) -> None:
         conn.commit()
 
 
-# --- run_tasks専用 -------------------------------------------------
-# run_tasksは (scene_id, run_id) の組み合わせが主キーのため、
-# id単一カラムを前提とする上記の汎用関数は使えない。
+# --- シーン子テーブル専用 -------------------------------------------
+# run_tasks / fit_models / review_resultsは (scene_id, <id_column>) の
+# 組み合わせが主キーのため、id単一カラムを前提とする上記の汎用関数は使えない。
 
 
-def fetch_run_tasks(scene_id: int) -> list[dict]:
-    """指定シーンのRunTaskを全件取得する（run_id昇順）。"""
+def fetch_scene_child(table: str, id_column: str, scene_id: int) -> list[dict]:
+    """指定シーンに属する行を全件取得する（id_column昇順）。"""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM run_tasks WHERE scene_id = ? ORDER BY run_id", (scene_id,)
+            f"SELECT * FROM {table} WHERE scene_id = ? ORDER BY {id_column}", (scene_id,)
         ).fetchall()
     return [dict(row) for row in rows]
 
 
-def insert_run_task(scene_id: int, **fields) -> int:
-    """指定シーンにRunTaskを1件追加し、採番されたrun_idを返す。
+def insert_scene_child(table: str, id_column: str, scene_id: int, **fields) -> int:
+    """指定シーンに1件追加し、採番されたid_columnの値を返す。
 
-    run_idはシーンごとに1から始まる連番として、既存の最大値+1を採番する。
+    id_columnはシーンごとに1から始まる連番として、既存の最大値+1を採番する。
     """
-    columns = ", ".join(["scene_id", "run_id", *fields.keys()])
+    columns = ", ".join(["scene_id", id_column, *fields.keys()])
     placeholders = ", ".join("?" for _ in range(len(fields) + 2))
     with sqlite3.connect(DB_PATH) as conn:
-        run_id = conn.execute(
-            "SELECT COALESCE(MAX(run_id), 0) + 1 FROM run_tasks WHERE scene_id = ?", (scene_id,)
+        new_id = conn.execute(
+            f"SELECT COALESCE(MAX({id_column}), 0) + 1 FROM {table} WHERE scene_id = ?", (scene_id,)
         ).fetchone()[0]
         conn.execute(
-            f"INSERT INTO run_tasks ({columns}) VALUES ({placeholders})",
-            (scene_id, run_id, *fields.values()),
+            f"INSERT INTO {table} ({columns}) VALUES ({placeholders})",
+            (scene_id, new_id, *fields.values()),
         )
         conn.commit()
-        return run_id
+        return new_id
+
+
+def update_scene_child(table: str, id_column: str, scene_id: int, item_id: int, **fields) -> None:
+    """指定シーン・idの行を更新する。"""
+    set_clause = ", ".join(f"{k} = ?" for k in fields.keys())
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            f"UPDATE {table} SET {set_clause} WHERE scene_id = ? AND {id_column} = ?",
+            (*fields.values(), scene_id, item_id),
+        )
+        conn.commit()
+
+
+def fetch_run_tasks(scene_id: int) -> list[dict]:
+    """指定シーンのRunTaskを全件取得する。"""
+    return fetch_scene_child("run_tasks", "run_id", scene_id)
+
+
+def insert_run_task(scene_id: int, **fields) -> int:
+    """指定シーンにRunTaskを1件追加し、採番されたrun_idを返す。"""
+    return insert_scene_child("run_tasks", "run_id", scene_id, **fields)
 
 
 def update_run_task(scene_id: int, run_id: int, **fields) -> None:
     """指定シーン・run_idのRunTaskを更新する。"""
-    set_clause = ", ".join(f"{k} = ?" for k in fields.keys())
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute(
-            f"UPDATE run_tasks SET {set_clause} WHERE scene_id = ? AND run_id = ?",
-            (*fields.values(), scene_id, run_id),
-        )
-        conn.commit()
+    update_scene_child("run_tasks", "run_id", scene_id, run_id, **fields)
